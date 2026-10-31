@@ -1,0 +1,54 @@
+name: Weekly Deep Dive
+
+# Runs only in backend/ — no frontend install required.
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Set to '1' to generate without publishing"
+        required: false
+        default: '0'
+
+concurrency:
+  group: weekly-update
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Publish weekly update
+        run: npm run agent:weekly
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_WEEKLY_API_KEY: ${{ secrets.GROQ_WEEKLY_API_KEY }}
+          USE_GROQ_WEEKLY_KEY: '1'
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL || vars.GROQ_MODEL || 'openai/gpt-oss-120b' }}
+          GROQ_FALLBACK_MODEL: ${{ vars.GROQ_FALLBACK_MODEL || 'openai/gpt-oss-20b' }}
+          GROQ_MIN_GAP_MS: '20000'
+          GROQ_RETRY_WAIT_MS: '90000'
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://gbp-guard.com' }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY || 'gbpguard2026indexnow' }}

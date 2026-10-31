@@ -1,0 +1,61 @@
+name: Daily Blog Agent
+
+# Runs only in backend/ — no frontend install required.
+# Three scheduled runs/day × 1 post = ~3 posts daily.
+on:
+  schedule:
+    - cron: '0 8 * * *'
+    - cron: '0 13 * * *'
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      count:
+        description: 'How many posts to publish this run'
+        required: false
+        default: '1'
+      dry_run:
+        description: "Set to '1' to generate without publishing"
+        required: false
+        default: '0'
+
+concurrency:
+  group: daily-blog-agent
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Publish posts
+        run: npm run agent:daily
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Prefer openai/gpt-oss-120b (llama-3.1-8b-instant / llama-3.3-70b-versatile retired 2026-08-16)
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL || vars.GROQ_MODEL || 'openai/gpt-oss-120b' }}
+          GROQ_FALLBACK_MODEL: ${{ vars.GROQ_FALLBACK_MODEL || 'openai/gpt-oss-20b' }}
+          GROQ_MIN_GAP_MS: '20000'
+          GROQ_RETRY_WAIT_MS: '90000'
+          CONTENT_COUNT: ${{ github.event.inputs.count || '1' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://gbp-guard.com' }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY || 'gbpguard2026indexnow' }}
